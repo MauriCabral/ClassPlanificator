@@ -86,8 +86,33 @@ st.markdown("""
 
 /* ═══ BASE ═══ */
 .stApp { background: var(--bg) !important; font-family: 'Nunito', sans-serif !important; }
-#MainMenu, footer, [data-testid="stDeployButton"], [data-testid="stHeader"] { visibility: hidden !important; }
+/* Limpiamos la barra superior, pero SIN ocultar el header entero: ahí vive el
+   botón para reabrir el panel cuando está cerrado. */
+#MainMenu, [data-testid="stMainMenu"], footer,
+[data-testid="stToolbar"], [data-testid="stDeployButton"] { visibility: hidden !important; }
+[data-testid="stHeader"] { background: transparent !important; }
 .block-container { max-width: 780px !important; padding-top: 2rem !important; padding-bottom: 4rem !important; }
+
+/* ═══ BOTÓN PARA ABRIR/CERRAR EL PANEL DE CONFIGURACIÓN ═══ */
+/* Red de seguridad: nunca ocultar el control de la barra lateral. */
+[data-testid="stSidebarCollapseButton"] { visibility: visible !important; }
+/* Cuando el panel está CERRADO, el botón aparece en el header: lo mostramos
+   como un pill rosa bien visible con la palabra "Configuración". */
+[data-testid="stHeader"] [data-testid="stSidebarCollapseButton"] button {
+  background: var(--rose) !important; border-radius: 8px !important;
+  padding: 0.42rem 0.7rem !important; width: auto !important;
+  box-shadow: 0 3px 12px rgba(212,132,154,0.35) !important;
+}
+[data-testid="stHeader"] [data-testid="stSidebarCollapseButton"] button:hover {
+  background: var(--rose-deep) !important;
+}
+[data-testid="stHeader"] [data-testid="stSidebarCollapseButton"] button svg {
+  color: #fff !important; fill: #fff !important;
+}
+[data-testid="stHeader"] [data-testid="stSidebarCollapseButton"] button::after {
+  content: "Configuración"; color: #fff; font-family: 'Nunito', sans-serif;
+  font-weight: 700; font-size: 0.82rem; margin-left: 6px; white-space: nowrap;
+}
 
 /* ═══ TIPOGRAFÍA ═══ */
 h1 { font-family: 'Cormorant Garamond', serif !important; font-size: 2.6rem !important; font-weight: 600 !important; color: var(--text) !important; letter-spacing: -0.3px !important; line-height: 1.1 !important; }
