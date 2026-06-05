@@ -23,6 +23,7 @@ st.set_page_config(
     page_title="Planificador de clases",
     page_icon="📚",
     layout="centered",
+    initial_sidebar_state="expanded",  # el panel siempre arranca abierto
 )
 
 GRADOS = ["1° grado", "2° grado", "3° grado", "4° grado", "5° grado", "6° grado"]
@@ -93,26 +94,28 @@ st.markdown("""
 [data-testid="stHeader"] { background: transparent !important; }
 .block-container { max-width: 780px !important; padding-top: 2rem !important; padding-bottom: 4rem !important; }
 
-/* ═══ BOTÓN PARA ABRIR/CERRAR EL PANEL DE CONFIGURACIÓN ═══ */
-/* Red de seguridad: nunca ocultar el control de la barra lateral. */
-[data-testid="stSidebarCollapseButton"] { visibility: visible !important; }
-/* Cuando el panel está CERRADO, el botón aparece en el header: lo mostramos
-   como un pill rosa bien visible con la palabra "Configuración". */
-[data-testid="stHeader"] [data-testid="stSidebarCollapseButton"] button {
+/* ═══ BOTÓN PARA REABRIR EL PANEL DE CONFIGURACIÓN ═══ */
+/* Cuando el panel está cerrado, Streamlit muestra "stExpandSidebarButton".
+   Lo convertimos en un pill rosa bien visible con la palabra "Configuración". */
+[data-testid="stExpandSidebarButton"] { visibility: visible !important; }
+[data-testid="stExpandSidebarButton"] button,
+button[data-testid="stExpandSidebarButton"] {
   background: var(--rose) !important; border-radius: 8px !important;
   padding: 0.42rem 0.7rem !important; width: auto !important;
   box-shadow: 0 3px 12px rgba(212,132,154,0.35) !important;
 }
-[data-testid="stHeader"] [data-testid="stSidebarCollapseButton"] button:hover {
+[data-testid="stExpandSidebarButton"] button:hover,
+button[data-testid="stExpandSidebarButton"]:hover {
   background: var(--rose-deep) !important;
 }
-[data-testid="stHeader"] [data-testid="stSidebarCollapseButton"] button svg {
-  color: #fff !important; fill: #fff !important;
+[data-testid="stExpandSidebarButton"] svg { color: #fff !important; fill: #fff !important; }
+[data-testid="stExpandSidebarButton"]::after,
+[data-testid="stExpandSidebarButton"] button::after {
+  content: " Configuración"; color: #fff; font-family: 'Nunito', sans-serif;
+  font-weight: 700; font-size: 0.82rem; margin-left: 4px; white-space: nowrap;
 }
-[data-testid="stHeader"] [data-testid="stSidebarCollapseButton"] button::after {
-  content: "Configuración"; color: #fff; font-family: 'Nunito', sans-serif;
-  font-weight: 700; font-size: 0.82rem; margin-left: 6px; white-space: nowrap;
-}
+/* El botón de cerrar (« dentro del panel) lo dejamos como está, solo visible. */
+[data-testid="stSidebarCollapseButton"] { visibility: visible !important; }
 
 /* ═══ TIPOGRAFÍA ═══ */
 h1 { font-family: 'Cormorant Garamond', serif !important; font-size: 2.6rem !important; font-weight: 600 !important; color: var(--text) !important; letter-spacing: -0.3px !important; line-height: 1.1 !important; }
