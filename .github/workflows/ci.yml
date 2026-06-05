@@ -35,4 +35,4 @@ jobs:
         run: python -m py_compile app.py auth.py crear_usuario.py
 
       - name: Correr los tests
-        run: pytest -q
+        run: python -m pytest -q
