@@ -1,6 +1,10 @@
 """Planificador de Clases para docentes de primaria (Argentina)."""
 
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 import streamlit as st
+import streamlit.components.v1 as components
 
 import ai
 import auth
@@ -8,6 +12,9 @@ import db
 import exportar
 import lectura
 import prompts
+
+# Zona horaria de Argentina para mostrar la hora de reseteo del cupo.
+TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
 
 # ----------------------------------------------------------------------------
 # Configuración general (debe ir primero)
@@ -236,13 +243,121 @@ if "fase" not in st.session_state:
 
 
 def reiniciar():
-    for clave in ("fase", "historial", "previas", "resultado", "objetivo"):
+    for clave in ("fase", "historial", "previas", "resultado", "objetivo", "editando"):
         st.session_state.pop(clave, None)
     st.rerun()
 
 
+def regenerar():
+    """Vuelve a generar una planificación nueva con el mismo contexto."""
+    st.session_state.pop("editando", None)
+    st.session_state.fase = "generar"
+    st.rerun()
+
+
+@st.dialog("¿Empezar una nueva planificación?")
+def _confirmar_nueva():
+    st.markdown(
+        "<p style='font-family:Nunito,sans-serif; color:#2D1F26; font-size:0.95rem;'>"
+        "Se va a borrar la planificación actual y todo el contexto de esta "
+        "conversación. <strong>Esta acción no se puede deshacer.</strong><br><br>"
+        "Si todavía no la descargaste, hacelo antes de continuar.</p>",
+        unsafe_allow_html=True,
+    )
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Cancelar", use_container_width=True):
+            st.rerun()
+    with c2:
+        if st.button("Sí, empezar de nuevo", type="primary", use_container_width=True):
+            reiniciar()
+
+
 def config_texto():
     return prompts.formato_config(st.session_state.config)
+
+
+# ----------------------------------------------------------------------------
+# Manejo del límite de uso (cupo gratuito de Gemini)
+# ----------------------------------------------------------------------------
+def registrar_limite(segundos: int):
+    """Guarda hasta qué hora hay que esperar para volver a pedir."""
+    reset = datetime.now(TZ_AR) + timedelta(seconds=max(segundos, 30))
+    st.session_state.limite_hasta = reset.isoformat()
+
+
+def aviso_limite():
+    """Muestra un aviso persistente mientras dure el período de espera.
+
+    Se borra solo cuando ya pasó la hora de reseteo del cupo.
+    """
+    iso = st.session_state.get("limite_hasta")
+    if not iso:
+        return
+    reset = datetime.fromisoformat(iso)
+    ahora = datetime.now(TZ_AR)
+    if ahora >= reset:
+        st.session_state.pop("limite_hasta", None)
+        return
+
+    hora = reset.strftime("%H:%M")
+    faltan = int((reset - ahora).total_seconds() // 60) + 1
+    st.markdown(f"""
+    <div style="background:#FCE8EC; border:1.5px solid #E9B7C4; border-left:5px solid #B86B82;
+                border-radius:12px; padding:1rem 1.3rem; margin-bottom:1.3rem;
+                display:flex; align-items:flex-start; gap:12px;">
+      <span style="font-size:1.4rem; line-height:1;">⏳</span>
+      <div>
+        <p style="margin:0 0 3px; font-weight:700; color:#8A2E44; font-size:0.95rem;
+                  font-family:'Nunito',sans-serif;">
+          Llegaste al límite de uso gratuito por ahora</p>
+        <p style="margin:0; color:#8A4A5A; font-size:0.86rem; font-family:'Nunito',sans-serif;
+                  line-height:1.5;">
+          Vas a poder volver a generar planificaciones a partir de las
+          <strong>{hora} hs</strong> (en unos {faltan} min).
+          Lo que ya generaste se mantiene; podés descargarlo igual.</p>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def en_espera_de_limite() -> bool:
+    """True si todavía estamos dentro del período de espera del cupo."""
+    iso = st.session_state.get("limite_hasta")
+    if not iso:
+        return False
+    return datetime.now(TZ_AR) < datetime.fromisoformat(iso)
+
+
+# ----------------------------------------------------------------------------
+# Aviso del navegador al recargar / cerrar (se pierden los datos de sesión)
+# ----------------------------------------------------------------------------
+def advertir_recarga():
+    """Activa el diálogo nativo del navegador si hay trabajo en curso.
+
+    El navegador muestra su propio mensaje genérico (no se puede personalizar
+    el texto por seguridad), pero evita perder el contexto sin querer.
+    """
+    hay_trabajo = bool(
+        st.session_state.get("historial") or st.session_state.get("resultado")
+    )
+    if not hay_trabajo:
+        return
+    components.html(
+        """
+        <script>
+        const win = window.parent || window;
+        if (!win.__avisoRecargaActivo) {
+            win.__avisoRecargaActivo = true;
+            win.addEventListener('beforeunload', function (e) {
+                e.preventDefault();
+                e.returnValue = '';
+            });
+        }
+        </script>
+        """,
+        height=0,
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -400,6 +515,10 @@ def panel_configuracion():
 
 panel_configuracion()
 
+# Avisos globales (visibles en todas las fases).
+advertir_recarga()
+aviso_limite()
+
 
 # ----------------------------------------------------------------------------
 # FASE 1 — Datos iniciales
@@ -475,9 +594,9 @@ if st.session_state.fase == "inicio":
             try:
                 pregunta = ai.siguiente_pregunta(
                     API_KEY, MODELO, st.session_state.historial, config_texto())
-            except ai.LimiteAlcanzado:
-                st.warning("Hay mucho uso en este momento. Probá de nuevo en un minutito.")
-                st.stop()
+            except ai.LimiteAlcanzado as e:
+                registrar_limite(e.segundos_espera)
+                st.rerun()
 
         if pregunta == "[LISTO]":
             st.session_state.fase = "generar"
@@ -510,9 +629,9 @@ elif st.session_state.fase == "preguntas":
             try:
                 pregunta = ai.siguiente_pregunta(
                     API_KEY, MODELO, st.session_state.historial, config_texto())
-            except ai.LimiteAlcanzado:
-                st.warning("Hay mucho uso en este momento. Probá de nuevo en un minutito.")
-                st.stop()
+            except ai.LimiteAlcanzado as e:
+                registrar_limite(e.segundos_espera)
+                st.rerun()
         if pregunta == "[LISTO]":
             st.session_state.fase = "generar"
         else:
@@ -527,17 +646,23 @@ elif st.session_state.fase == "generar":
     _encabezado(f"{st.session_state.materia} · {st.session_state.grado}")
     _fase_badge("generar")
 
+    # Si estamos esperando que se renueve el cupo, no reintentamos en bucle:
+    # volvemos a las preguntas y dejamos el aviso visible (ya mostrado arriba).
+    if en_espera_de_limite():
+        if st.button("← Volver a las preguntas"):
+            st.session_state.fase = "preguntas"
+            st.rerun()
+        st.stop()
+
     with st.spinner("Armando tu planificación... puede tardar unos segundos."):
         try:
             resultado = ai.generar_planificacion(
                 API_KEY, MODELO, st.session_state.materia, st.session_state.grado,
                 st.session_state.historial, st.session_state.previas, config_texto(),
             )
-        except ai.LimiteAlcanzado:
-            st.warning("Hay mucho uso en este momento. Probá de nuevo en un minutito.")
-            if st.button("Reintentar"):
-                st.rerun()
-            st.stop()
+        except ai.LimiteAlcanzado as e:
+            registrar_limite(e.segundos_espera)
+            st.rerun()
 
     st.session_state.resultado = resultado
     db.guardar_planificacion(SUPA_URL, SUPA_KEY, st.session_state.materia,
@@ -554,44 +679,85 @@ elif st.session_state.fase == "resultado":
     _encabezado(f"{st.session_state.materia} · {st.session_state.grado}")
     _fase_badge("resultado")
 
-    docx_bytes = exportar.planificacion_a_docx(
-        st.session_state.materia, st.session_state.grado,
-        st.session_state.resultado, st.session_state.objetivo,
-        st.session_state.config,
-    )
-    nombre = f"Planificacion_{st.session_state.materia}_{st.session_state.grado}".replace(" ", "_")
+    editando = st.session_state.get("editando", False)
 
-    st.markdown("""
+    st.markdown(f"""
     <div style="background:#FAF0F3; border-radius:14px; padding:1rem 1.4rem;
                 margin-bottom:1.2rem; display:flex; align-items:center; gap:12px;
                 border:1.5px solid #F2D9E0;">
-      <span style="font-size:1.5rem;">✨</span>
+      <span style="font-size:1.5rem;">{'✏️' if editando else '✨'}</span>
       <div>
         <p style="margin:0; font-weight:700; color:#2D1F26; font-size:0.95rem;
                   font-family:'Nunito',sans-serif;">
-          ¡Tu planificación está lista!</p>
+          {'Estás editando la planificación' if editando else '¡Tu planificación está lista!'}</p>
         <p style="margin:0; color:#7A5568; font-size:0.82rem; font-family:'Nunito',sans-serif;">
-          Revisala abajo y descargala en Word cuando quieras.</p>
+          {'Hacé los cambios que quieras y guardá. El Word saldrá con tus ediciones.'
+            if editando else 'Revisala, editala si querés y descargala en Word.'}</p>
       </div>
     </div>
     """, unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button(
-            "⬇️  Descargar en Word", data=docx_bytes, file_name=f"{nombre}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            type="primary", use_container_width=True,
+    nombre = f"Planificacion_{st.session_state.materia}_{st.session_state.grado}".replace(" ", "_")
+
+    # ── Modo edición (A) ────────────────────────────────────────────────────
+    if editando:
+        texto_editado = st.text_area(
+            "Contenido de la planificación",
+            value=st.session_state.resultado,
+            height=520,
+            label_visibility="collapsed",
         )
-    with col2:
-        if st.button("✦  Nueva planificación", use_container_width=True):
-            reiniciar()
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✓  Guardar cambios", type="primary", use_container_width=True):
+                st.session_state.resultado = texto_editado
+                st.session_state.editando = False
+                db.guardar_planificacion(
+                    SUPA_URL, SUPA_KEY, st.session_state.materia,
+                    st.session_state.grado, st.session_state.objetivo,
+                    texto_editado, "editada",
+                )
+                st.rerun()
+        with c2:
+            if st.button("Cancelar", use_container_width=True):
+                st.session_state.editando = False
+                st.rerun()
 
-    st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+    # ── Modo lectura + acciones ─────────────────────────────────────────────
+    else:
+        docx_bytes = exportar.planificacion_a_docx(
+            st.session_state.materia, st.session_state.grado,
+            st.session_state.resultado, st.session_state.objetivo,
+            st.session_state.config,
+        )
 
-    st.markdown("""
-    <div style="background:white; border:1.5px solid #EAD8E0; border-radius:20px;
-                padding:2.5rem 2.8rem; box-shadow:0 4px 20px rgba(45,31,38,0.07);">
-    """, unsafe_allow_html=True)
-    st.markdown(st.session_state.resultado)
-    st.markdown("</div>", unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                "⬇️  Descargar en Word", data=docx_bytes, file_name=f"{nombre}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary", use_container_width=True,
+            )
+        with col2:
+            if st.button("✏️  Editar", use_container_width=True):
+                st.session_state.editando = True
+                st.rerun()
+
+        col3, col4 = st.columns(2)
+        with col3:
+            # Regenerar (C): bloqueado si estamos esperando el cupo.
+            if st.button("🔄  Generar otra versión", use_container_width=True,
+                         disabled=en_espera_de_limite()):
+                regenerar()
+        with col4:
+            if st.button("✦  Nueva planificación", use_container_width=True):
+                _confirmar_nueva()
+
+        st.markdown("<div style='height:1.5rem'></div>", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="background:white; border:1.5px solid #EAD8E0; border-radius:20px;
+                    padding:2.5rem 2.8rem; box-shadow:0 4px 20px rgba(45,31,38,0.07);">
+        """, unsafe_allow_html=True)
+        st.markdown(st.session_state.resultado)
+        st.markdown("</div>", unsafe_allow_html=True)

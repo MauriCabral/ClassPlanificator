@@ -1,0 +1,38 @@
+name: CI
+
+# Se ejecuta en cada push y en cada Pull Request a main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests y verificación
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Verificar que los módulos importan
+        run: python -c "import ai, db, exportar, lectura, prompts"
+
+      - name: Verificar que app.py compila
+        run: python -m py_compile app.py auth.py crear_usuario.py
+
+      - name: Correr los tests
+        run: pytest -q
