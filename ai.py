@@ -3,6 +3,7 @@
 import re
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 
 import prompts
@@ -17,6 +18,16 @@ class LimiteAlcanzado(Exception):
     def __init__(self, segundos_espera: int = 60):
         self.segundos_espera = segundos_espera
         super().__init__("Se alcanzó el límite de uso gratuito.")
+
+
+class ErrorTemporalIA(Exception):
+    """El servicio de Gemini falló de forma transitoria (error 5xx).
+
+    No es un problema de cupo: suele resolverse reintentando en segundos.
+    """
+
+    def __init__(self):
+        super().__init__("El servicio de IA no respondió; probá de nuevo en un momento.")
 
 
 def _cliente(api_key: str) -> "genai.Client":
@@ -54,6 +65,13 @@ def _lanzar_limite(err: Exception):
     raise LimiteAlcanzado(_segundos_espera(err)) from err
 
 
+def _es_servidor_caido(err: Exception) -> bool:
+    """True si Gemini devolvió un error 5xx (sobrecarga, falla interna, etc.)."""
+    if isinstance(err, genai_errors.ServerError):
+        return True
+    return getattr(err, "code", None) in (500, 502, 503, 504)
+
+
 def siguiente_pregunta(api_key, model_name, historial, config_texto=""):
     """Dada la conversación, devuelve la próxima pregunta o '[LISTO]'.
 
@@ -73,6 +91,8 @@ def siguiente_pregunta(api_key, model_name, historial, config_texto=""):
     except Exception as err:  # noqa: BLE001
         if _es_429(err):
             _lanzar_limite(err)
+        if _es_servidor_caido(err):
+            raise ErrorTemporalIA() from err
         raise
 
 
@@ -92,6 +112,8 @@ def generar_planificacion(api_key, model_name, materia, grado, historial,
     except Exception as err:  # noqa: BLE001
         if _es_429(err):
             _lanzar_limite(err)
+        if _es_servidor_caido(err):
+            raise ErrorTemporalIA() from err
         raise
 
 

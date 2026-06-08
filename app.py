@@ -625,6 +625,10 @@ if st.session_state.fase == "inicio":
             except ai.LimiteAlcanzado as e:
                 registrar_limite(e.segundos_espera)
                 st.rerun()
+            except ai.ErrorTemporalIA:
+                st.error("El servicio de IA tuvo un problema momentáneo. "
+                         "Probá de nuevo presionando 'Comenzar'.")
+                st.stop()
 
         if pregunta == "[LISTO]":
             st.session_state.fase = "generar"
@@ -660,6 +664,10 @@ elif st.session_state.fase == "preguntas":
             except ai.LimiteAlcanzado as e:
                 registrar_limite(e.segundos_espera)
                 st.rerun()
+            except ai.ErrorTemporalIA:
+                st.error("El servicio de IA tuvo un problema momentáneo. "
+                         "Probá de nuevo en unos segundos.")
+                st.stop()
         if pregunta == "[LISTO]":
             st.session_state.fase = "generar"
         else:
@@ -691,6 +699,12 @@ elif st.session_state.fase == "generar":
         except ai.LimiteAlcanzado as e:
             registrar_limite(e.segundos_espera)
             st.rerun()
+        except ai.ErrorTemporalIA:
+            st.error("El servicio de IA tuvo un problema momentáneo. "
+                     "Probá de nuevo en unos segundos.")
+            if st.button("Reintentar"):
+                st.rerun()
+            st.stop()
 
     st.session_state.resultado = resultado
     db.guardar_planificacion(SUPA_URL, SUPA_KEY, st.session_state.materia,
