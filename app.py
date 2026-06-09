@@ -618,6 +618,8 @@ if st.session_state.fase == "inicio":
         )
         st.session_state.historial = [{"role": "user", "content": primer_mensaje}]
 
+        pregunta = None
+        error_temporal = False
         with st.spinner("Pensando la primera pregunta..."):
             try:
                 pregunta = ai.siguiente_pregunta(
@@ -625,10 +627,13 @@ if st.session_state.fase == "inicio":
             except ai.LimiteAlcanzado as e:
                 registrar_limite(e.segundos_espera)
                 st.rerun()
-            except ai.ErrorTemporalIA:
-                st.error("El servicio de IA tuvo un problema momentáneo. "
-                         "Probá de nuevo presionando 'Comenzar'.")
-                st.stop()
+            except Exception:  # noqa: BLE001
+                error_temporal = True
+
+        if error_temporal:
+            st.error("El servicio de IA tuvo un problema momentáneo. "
+                     "Probá de nuevo presionando 'Comenzar'.")
+            st.stop()
 
         if pregunta == "[LISTO]":
             st.session_state.fase = "generar"
@@ -657,6 +662,8 @@ elif st.session_state.fase == "preguntas":
     respuesta = st.chat_input("Escribí tu respuesta...")
     if respuesta:
         st.session_state.historial.append({"role": "user", "content": respuesta})
+        pregunta = None
+        error_temporal = False
         with st.spinner("Pensando..."):
             try:
                 pregunta = ai.siguiente_pregunta(
@@ -664,10 +671,13 @@ elif st.session_state.fase == "preguntas":
             except ai.LimiteAlcanzado as e:
                 registrar_limite(e.segundos_espera)
                 st.rerun()
-            except ai.ErrorTemporalIA:
-                st.error("El servicio de IA tuvo un problema momentáneo. "
-                         "Probá de nuevo en unos segundos.")
-                st.stop()
+            except Exception:  # noqa: BLE001
+                error_temporal = True
+
+        if error_temporal:
+            st.error("El servicio de IA tuvo un problema momentáneo. "
+                     "Probá de nuevo en unos segundos.")
+            st.stop()
         if pregunta == "[LISTO]":
             st.session_state.fase = "generar"
         else:
@@ -690,6 +700,8 @@ elif st.session_state.fase == "generar":
             st.rerun()
         st.stop()
 
+    resultado = None
+    error_temporal = False
     with st.spinner("Armando tu planificación... puede tardar unos segundos."):
         try:
             resultado = ai.generar_planificacion(
@@ -699,12 +711,15 @@ elif st.session_state.fase == "generar":
         except ai.LimiteAlcanzado as e:
             registrar_limite(e.segundos_espera)
             st.rerun()
-        except ai.ErrorTemporalIA:
-            st.error("El servicio de IA tuvo un problema momentáneo. "
-                     "Probá de nuevo en unos segundos.")
-            if st.button("Reintentar"):
-                st.rerun()
-            st.stop()
+        except Exception:  # noqa: BLE001
+            error_temporal = True
+
+    if error_temporal:
+        st.error("El servicio de IA tuvo un problema momentáneo. "
+                 "Probá de nuevo en unos segundos.")
+        if st.button("Reintentar"):
+            st.rerun()
+        st.stop()
 
     st.session_state.resultado = resultado
     db.guardar_planificacion(SUPA_URL, SUPA_KEY, st.session_state.materia,
