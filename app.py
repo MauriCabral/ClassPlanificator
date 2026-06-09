@@ -1,6 +1,5 @@
 """Planificador de Clases para docentes de primaria (Argentina)."""
 
-import traceback as _tb
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -630,13 +629,10 @@ if st.session_state.fase == "inicio":
                 st.rerun()
             except Exception:  # noqa: BLE001
                 error_temporal = True
-                st.session_state._debug_tb = _tb.format_exc()
 
         if error_temporal:
             st.error("El servicio de IA tuvo un problema momentáneo. "
                      "Probá de nuevo presionando 'Comenzar'.")
-            with st.expander("🔍 Detalle del error"):
-                st.code(st.session_state.pop("_debug_tb", "sin info"), language="")
             st.stop()
 
         if pregunta == "[LISTO]":
@@ -661,7 +657,6 @@ elif st.session_state.fase == "preguntas":
                 st.write(msg["content"])
     except Exception:  # noqa: BLE001
         st.error("Error al mostrar el historial.")
-        st.code(_tb.format_exc(), language="")
         st.stop()
 
     if st.button("Ya te conté suficiente — generá la planificación", use_container_width=True):
@@ -682,13 +677,10 @@ elif st.session_state.fase == "preguntas":
                 st.rerun()
             except Exception:  # noqa: BLE001
                 error_temporal = True
-                st.session_state._debug_tb = _tb.format_exc()
 
         if error_temporal:
             st.error("El servicio de IA tuvo un problema momentáneo. "
                      "Probá de nuevo en unos segundos.")
-            with st.expander("🔍 Detalle del error"):
-                st.code(st.session_state.pop("_debug_tb", "sin info"), language="")
             st.stop()
         if pregunta == "[LISTO]":
             st.session_state.fase = "generar"
@@ -725,13 +717,10 @@ elif st.session_state.fase == "generar":
             st.rerun()
         except Exception:  # noqa: BLE001
             error_temporal = True
-            st.session_state._debug_tb = _tb.format_exc()
 
     if error_temporal:
         st.error("El servicio de IA tuvo un problema momentáneo. "
                  "Probá de nuevo en unos segundos.")
-        with st.expander("🔍 Detalle del error"):
-            st.code(st.session_state.pop("_debug_tb", "sin info"), language="")
         if st.button("Reintentar"):
             st.rerun()
         st.stop()
